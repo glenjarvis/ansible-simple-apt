@@ -2,7 +2,9 @@
 
 ## Use Ansible Apt in a Virtual Env
 
-By default, the [Ansible apt module](https://docs.ansible.com/ansible/latest/modules/apt_module.html) requires the **apt**, **apt.debfile**, and **apt_pkg** packages to import:
+By default, the [Ansible apt
+module](https://docs.ansible.com/ansible/latest/modules/apt_module.html)
+requires the **apt**, **apt.debfile**, and **apt_pkg** packages to import:
 
 ```HAS_PYTHON_APT = True
 try:
@@ -18,21 +20,30 @@ else:
     PYTHON_APT = 'python3-apt'
 ```
     
-This comes from the **python-apt** package. However, those packages do not install in a Python virtualenv (2 nor 3). They were originally created to be installed in the sytem-level Python.
+This comes from the **python-apt** package. However, those packages do not
+install in a Python virtualenv (2 nor 3). They were originally created to be
+installed in the sytem-level Python.
 
-This project is a fork of the Python package **python-apt** so that Ansible can use the Ansible **apt** module to install on Debian style hosts when the **interpreter_python** is set to a location other than **/usr/bin/python**.
+This project is a fork of the Python package **python-apt** so that Ansible can
+use the Ansible **apt** module to install on Debian style hosts when the
+**interpreter_python** is set to a location other than **/usr/bin/python**.
 
 ## Why Use a Virtualenv for Ansible?
 
-The question often comes up, *Why do this?* Isn't it easier to use the system-level Python? 
+The question often comes up, *Why do this?* Isn't it easier to use the
+system-level Python? 
 
-It is true that this package was written by Ubuntu developers and is packaged as a Debian package. And, it was written to be used in Debian packages.
+It is true that this package was written by Ubuntu developers and is packaged
+as a Debian package. And, it was written to be used in Debian packages.
 
-However, since the Ansible **apt** module has been written to use this package, having it tightly coupled with the system level Python makes it difficult for some tasks, such as Python3 support in Ansible on older Debian hosts.
+However, since the Ansible **apt** module has been written to use this package,
+having it tightly coupled with the system level Python makes it difficult for
+some tasks, such as Python3 support in Ansible on older Debian hosts.
 
 ## What symptoms do you see in the venv / apt scenario?
 
-The task will fail with the message **Could not import python modules: apt, apt_pkg. Please install python-apt package.**.
+The task will fail with the message **Could not import python modules: apt,
+apt_pkg. Please install python-apt package.**.
 
 ```
     default: PLAY [Demo Playbook] ***********************************************************
@@ -48,16 +59,19 @@ The task will fail with the message **Could not import python modules: apt, apt_
     default: localhost                  : ok=3    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0
 ```
 
-See the **01_ansible_venv_problem_demo** subdirectory in this repo for a full demonstration using **Vagrant**.
+See the **01_ansible_venv_problem_demo** subdirectory in this repo for a full
+demonstration using **Vagrant**.
 
 ## Can you work around this?
 
-Actually, there are work-arounds that have been successful. None of them are ideal or without human error.
+Actually, there are work-arounds that have been successful. None of them are
+ideal or without human error.
 
 
 ### First work-around: Avoid apt module
 
-One can avoid the Ansible **apt** module completely. The shell or command module could create a new process and use the Apt CLI:
+One can avoid the Ansible **apt** module completely. The shell or command
+module could create a new process and use the Apt CLI:
 
 ```
 - name: Demo Shell Workaround
@@ -86,7 +100,8 @@ changed: [localhost]
 
 One could write a custom Ansible **apt** module (e.g., **apt-new**). 
 
-If the module avoided the imports and used subprocesses to execute commands, this could work well. This could be used to customize messages and behavior.
+If the module avoided the imports and used subprocesses to execute commands,
+this could work well. This could be used to customize messages and behavior.
 
 However, there are still drawbacks:
 
@@ -108,16 +123,21 @@ When trying to do so, you may see an error similar to:
     default:     ImportError: No module named DistUtilsExtra.command
 ```
 
-See the **02_install_problem_demo** subdirectory in this repo for a full demonstration using **Vagrant**.
+See the **02_install_problem_demo** subdirectory in this repo for a full
+demonstration using **Vagrant**.
 
 
 ## Is this released yet?
 
 Actually, no. **I NEED YOUR HELP**. 
 
-Most of the issues that I see here are simple enough - stale packaging (e.g., using Distutils). I've been able to work around most issues. HOWEVER, I'm having difficulty with the extension compilation (**apt_inst** and **apt_pkg**).
+Most of the issues that I see here are simple enough - stale packaging (e.g.,
+using Distutils). I've been able to work around most issues. HOWEVER, I'm
+having difficulty with the extension compilation (**apt_inst** and
+**apt_pkg**).
 
-Ideally, we modernize this enough to use **wheels** so we don't have to compile on installation. 
+Ideally, we modernize this enough to use **wheels** so we don't have to compile
+on installation. 
 
 **I'm stuck**
 
