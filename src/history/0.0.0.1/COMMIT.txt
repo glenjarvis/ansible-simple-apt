@@ -1,0 +1,14 @@
+commit c48fc23d7533ae4c26dece12fc982f6cfe713712 (HEAD)
+Author: James Cammarata <jimi@sngx.net>
+Date:   Wed Sep 11 23:33:59 2013 -0500
+
+    Use low-level package objects in the apt module to check installed state
+
+    Packages which are half-installed are not adequately represented by
+    the .is_installed field of the apt.package.Package object. By using the
+    lower-level apt_pkg.Package object (which provides the .current_state
+    field), we can check for a partially-installed state more accurately.
+
+    Fixes #3421
+
+https://github.com/ansible/ansible/issues/3421
