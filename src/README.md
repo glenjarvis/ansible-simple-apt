@@ -30,7 +30,7 @@ However, when browing historical source, we see the initial apt module was
 created (without this python-apt) dependency -- command line only on 
 Mon Mar 26 12:49:13 2012
 
-The problematic dependency for the the `python-apt` library was added on Sep 11.
+The problematic dependency for the the `python-apt` library was added in 2013.
 It was added to fix this bug:
 https://github.com/ansible/ansible/issues/3421
 
