@@ -1,4 +1,4 @@
-# ansible_simple_apt
+# ansible-simple-apt
 
 # Objective
 
