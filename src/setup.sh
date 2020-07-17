@@ -5,7 +5,7 @@ sudo aptitude update
 sudo aptitude install -y virtualenv
 
 /sbin/runuser -l vagrant -c '/usr/bin/virtualenv /vagrant/venv'
-/vagrant/venv/bin/activate
+source /vagrant/venv/bin/activate
 /vagrant/venv/bin/pip install --upgrade pip
 /vagrant/venv/bin/pip install wheel
 /vagrant/venv/bin/pip install ansible
