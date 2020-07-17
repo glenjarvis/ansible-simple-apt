@@ -304,6 +304,17 @@ CLEAN_OP_CHANGED_STR = dict(
 )
 
 
+# TODO: Remove when dependencies are complete
+import apt
+import apt.debfile
+import apt_pkg
+
+if sys.version_info[0] < 3:
+    PYTHON_APT = 'python-apt'
+else:
+    PYTHON_APT = 'python3-apt'
+
+
 class PolicyRcD(object):
     """
     This class is a context manager for the /usr/sbin/policy-rc.d file.
@@ -409,17 +420,48 @@ def package_version_compare(version, other_version):
         return apt_pkg.VersionCompare(version, other_version)
 
 
-def package_status(m, pkgname, version, todo_cache, state):
-    if state == 'install':
-        # package_is_installed, version_is_installed, package_is_upgradable, has_files
-        return False, False, True, False
-    else:
-        # package_is_installed, version_is_installed, package_is_upgradable, has_files
-        return False, False, False, False
+def package_status(m, pkgname, version, cache, state):
+    # DEBUG m: <ansible.module_utils.basic.AnsibleModule object at 0x7fd91a753b50>
+    # DEBUG pkgname: cowsay
+    # DEBUG version: None
+    # DEBUG cache: <apt.cache.Cache object at 0x7fd91f2d1550>
+    # DEBUG state: install
+    try:
+        # get the package from the cache, as well as the
+        # low-level apt_pkg.Package object which contains
+        # state fields not directly accessible from the
+        # higher-level apt.package.Package object.
 
-    # TODO: This is now dead code. Resolve
+        # DEBUG pkgname: cowsay
+        # cache[pkgname]: <Package: name:'cowsay' architecture='amd64' id:8612L>
+        pkg = cache[pkgname]
+        # DEBUG ll_pkg: <apt_pkg.Package object: name:'cowsay' section: 'games' id:8612>
+        ll_pkg = cache._cache[pkgname]  # the low-level package object
+    except KeyError:
+        if state == 'install':
+            try:
+                provided_packages = cache.get_providing_packages(pkgname)
+                if provided_packages:
+                    is_installed = False
+                    upgradable = False
+                    version_ok = False
+                    # when virtual package providing only one package, look up status of target package
+                    if cache.is_virtual_package(pkgname) and len(provided_packages) == 1:
+                        package = provided_packages[0]
+                        installed, version_ok, upgradable, has_files = package_status(m, package.name, version, cache, state='install')
+                        if installed:
+                            is_installed = True
+                    return is_installed, version_ok, upgradable, False
+                m.fail_json(msg="No package matching '%s' is available" % pkgname)
+            except AttributeError:
+                # python-apt version too old to detect virtual packages
+                # mark as upgradable and let apt-get install deal with it
+                return False, False, True, False
+        else:
+            return False, False, False, False
     try:
         has_files = len(pkg.installed_files) > 0
+        # has_files: True
     except UnicodeDecodeError:
         has_files = True
     except AttributeError:
@@ -427,6 +469,9 @@ def package_status(m, pkgname, version, todo_cache, state):
 
     try:
         package_is_installed = ll_pkg.current_state == apt_pkg.CURSTATE_INSTALLED
+        # DEBUG: package_is_installed: True
+        # DEBUG: ll_pkg.current_state: 6
+        # DEBUG: apt_pkg.CURSTATE_INSTALLED: 6
     except AttributeError:  # python-apt 0.7.X has very weak low-level object
         try:
             # might not be necessary as python-apt post-0.7.X should have current_state property
@@ -436,6 +481,7 @@ def package_status(m, pkgname, version, todo_cache, state):
             package_is_installed = pkg.isInstalled
 
     version_is_installed = package_is_installed
+    # DEBUG: version_is_installed: True`
     if version:
         versions = package_versions(pkgname, pkg, cache._cache)
         avail_upgrades = fnmatch.filter(versions, version)
@@ -460,10 +506,15 @@ def package_status(m, pkgname, version, todo_cache, state):
     else:
         try:
             package_is_upgradable = pkg.is_upgradable
+            # DEBUG: pkg.is_upgradable: False
         except AttributeError:
             # assume older version of python-apt is installed
             package_is_upgradable = pkg.isUpgradable
 
+    # DEBUG: package_is_installed: True
+    # DEBUG: version_is_installed: True
+    # DEBUG: package_is_upgradable: False
+    # DEBUG: has_files: True
     return package_is_installed, version_is_installed, package_is_upgradable, has_files
 
 
@@ -942,6 +993,27 @@ def get_updated_cache_time():
 
 # TODO HERE:
 # https://github.com/ansible/ansible-modules-core/issues/2951
+def get_cache(module):
+    '''Attempt to get the cache object and update till it works'''
+    cache = None
+    try:
+        cache = apt.Cache()
+    except SystemError as e:
+        if '/var/lib/apt/lists/' in to_native(e).lower():
+            # update cache until files are fixed or retries exceeded
+            retries = 0
+            while retries < 2:
+                (rc, so, se) = module.run_command(['apt-get', 'update', '-q'])
+                retries += 1
+                if rc == 0:
+                    break
+            if rc != 0:
+                module.fail_json(msg='Updating the cache to correct corrupt package lists failed:\n%s\n%s' % (to_native(e), so + se), rc=rc)
+            # try again
+            cache = apt.Cache()
+        else:
+            module.fail_json(msg=to_native(e))
+    return cache
 
 
 def main():
@@ -998,7 +1070,17 @@ def main():
     autoclean = p['autoclean']
 
     # Get the cache object
-    if True:  # TODO: This is a dummy indented statement to keep git diff clean while refactoring
+    cache = get_cache(module)
+
+    try:
+        if p['default_release']:
+            try:
+                apt_pkg.config['APT::Default-Release'] = p['default_release']
+            except AttributeError:
+                apt_pkg.Config['APT::Default-Release'] = p['default_release']
+            # reopen cache w/ modified config
+            cache.open(progress=None)
+
         mtimestamp, updated_cache_time = get_updated_cache_time()
         # Cache valid time is default 0, which will update the cache if
         #  needed and `update_cache` was set to true
@@ -1008,17 +1090,16 @@ def main():
             tdelta = datetime.timedelta(seconds=p['cache_valid_time'])
             if not mtimestamp + tdelta >= now:
                 # Retry to update the cache up to 3 times
-                # TODO: Update cache
                 err = ''
-                #for retry in range(3):
-                #    #try:
-                #    #    cache.update()
-                #    #    break
-                #    #except apt.cache.FetchFailedException as e:
-                #    #    err = to_native(e)
-                #else:
-                #    module.fail_json(msg='Failed to update apt cache: %s' % err)
-                #cache.open(progress=None)
+                for retry in range(3):
+                    try:
+                        cache.update()
+                        break
+                    except apt.cache.FetchFailedException as e:
+                        err = to_native(e)
+                else:
+                    module.fail_json(msg='Failed to update apt cache: %s' % err)
+                cache.open(progress=None)
                 mtimestamp, post_cache_update_time = get_updated_cache_time()
                 if updated_cache_time != post_cache_update_time:
                     updated_cache = True
@@ -1085,7 +1166,7 @@ def main():
             success, retvals = install(
                 module,
                 packages,
-                "TODO cache",
+                cache,
                 upgrade=state_upgrade,
                 default_release=p['default_release'],
                 install_recommends=install_recommends,
@@ -1108,7 +1189,12 @@ def main():
             else:
                 module.fail_json(**retvals)
         elif p['state'] == 'absent':
-            remove(module, packages, 'TODO-cache', p['purge'], force=force_yes, dpkg_options=dpkg_options, autoremove=autoremove)
+            remove(module, packages, cache, p['purge'], force=force_yes, dpkg_options=dpkg_options, autoremove=autoremove)
+
+    except apt.cache.LockFailedException:
+        module.fail_json(msg="Failed to lock apt for exclusive operation")
+    except apt.cache.FetchFailedException:
+        module.fail_json(msg="Could not fetch updated apt files")
 
 
 if __name__ == "__main__":
