@@ -10,4 +10,5 @@
     - sapt:
         name: cowsay
         state: present
+      become: yes
 
