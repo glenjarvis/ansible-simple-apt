@@ -303,19 +303,6 @@ CLEAN_OP_CHANGED_STR = dict(
     autoclean='Del ',
 )
 
-HAS_PYTHON_APT = True
-try:
-    import apt
-    import apt.debfile
-    import apt_pkg
-except ImportError:
-    HAS_PYTHON_APT = False
-
-if sys.version_info[0] < 3:
-    PYTHON_APT = 'python-apt'
-else:
-    PYTHON_APT = 'python3-apt'
-
 
 class PolicyRcD(object):
     """
@@ -1026,27 +1013,7 @@ def main():
 
     module.run_command_environ_update = APT_ENV_VARS
 
-    if not HAS_PYTHON_APT:
-        if module.check_mode:
-            module.fail_json(msg="%s must be installed to use check mode. "
-                                 "If run normally this module can auto-install it." % PYTHON_APT)
-        try:
-            # We skip cache update in auto install the dependency if the
-            # user explicitly declared it with update_cache=no.
-            if module.params.get('update_cache') is False:
-                module.warn("Auto-installing missing dependency without updating cache: %s" % PYTHON_APT)
-            else:
-                module.warn("Updating cache and auto-installing missing dependency: %s" % PYTHON_APT)
-                module.run_command(['apt-get', 'update'], check_rc=True)
-
-            module.run_command(['apt-get', 'install', '--no-install-recommends', PYTHON_APT, '-y', '-q'], check_rc=True)
-            global apt, apt_pkg
-            import apt
-            import apt.debfile
-            import apt_pkg
-        except ImportError:
-            module.fail_json(msg="Could not import python modules: apt, apt_pkg. "
-                                 "Please install %s package." % PYTHON_APT)
+    # CODE REMOVED HERE
 
     global APTITUDE_CMD
     APTITUDE_CMD = module.get_bin_path("aptitude", False)
