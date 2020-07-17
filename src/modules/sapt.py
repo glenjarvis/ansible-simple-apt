@@ -961,28 +961,8 @@ def get_updated_cache_time():
     return mtimestamp, updated_cache_time
 
 
+# TODO HERE:
 # https://github.com/ansible/ansible-modules-core/issues/2951
-def get_cache(module):
-    '''Attempt to get the cache object and update till it works'''
-    cache = None
-    try:
-        cache = apt.Cache()
-    except SystemError as e:
-        if '/var/lib/apt/lists/' in to_native(e).lower():
-            # update cache until files are fixed or retries exceeded
-            retries = 0
-            while retries < 2:
-                (rc, so, se) = module.run_command(['apt-get', 'update', '-q'])
-                retries += 1
-                if rc == 0:
-                    break
-            if rc != 0:
-                module.fail_json(msg='Updating the cache to correct corrupt package lists failed:\n%s\n%s' % (to_native(e), so + se), rc=rc)
-            # try again
-            cache = apt.Cache()
-        else:
-            module.fail_json(msg=to_native(e))
-    return cache
 
 
 def main():
