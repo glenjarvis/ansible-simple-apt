@@ -421,6 +421,20 @@ def package_version_compare(version, other_version):
 
 
 def package_status(m, pkgname, version, cache, state):
+    """Determine package's currently installed status
+
+    Parameters:
+    pkgname (str): Package name in question
+    version (str|None): Version of package to be installed (if provided)
+    state (str): Desired state of package
+
+    Returns (tuple):
+    package_is_installed (bool)
+    version_is_installed (bool)
+    package_is_upgradable (bool)
+    has_files (bool)
+    """
+
     # DEBUG m: <ansible.module_utils.basic.AnsibleModule object at 0x7fd91a753b50>
     # DEBUG pkgname: cowsay
     # DEBUG version: None
