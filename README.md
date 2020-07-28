@@ -109,12 +109,19 @@ However, there are still drawbacks:
 * There may be a large code base and/or infrastructure in place where such a change is impractical
 * Naming this new module may be hard
 
+With that said, this appears to be the best approach to solving this problem,
+regardless. Work appears to be moving further on this point than on any other.
+It **nips the core problem** in the bud:
+
+https://github.com/glenjarvis/ansible-simple-apt
+
 
 ## Can't you just install the python-apt package inside of the VirtualEnv?
 
-Actually, no. That's the purpose of this fork/repo - to enable that installation.
+There is one work around found by Stefan Taranu. The purpose of this fork/repo
+is to enable and demo that installation.
 
-When trying to do so, you may see an error similar to:
+When trying to do so normally, you may see an error similar to:
 
 ```
     default:       File "<string>", line 1, in <module>
@@ -125,6 +132,10 @@ When trying to do so, you may see an error similar to:
 
 See the **02_install_problem_demo** subdirectory in this repo for a full
 demonstration using **Vagrant**.
+
+HOWEVER, also see the **03_install_problem_workaround** for a demo of a workaround submited
+by Stefan Taranu. This work around does appear to solve the problem, but it may
+not be as easy to implement as one hopes.
 
 
 ## Is this released yet?
