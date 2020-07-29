@@ -266,6 +266,7 @@ warnings.filterwarnings('ignore', "apt API not stable yet", FutureWarning)
 import datetime
 import fnmatch
 import itertools
+import json
 import os
 import shutil
 import re
@@ -425,81 +426,35 @@ def package_version_compare(version, other_version):
 #########################################
 # BEGIN Alternate form of package_status
 #########################################
-
 # New section. Separated from old until functionality is ensured to not-change
 
-import re
-
-DPKG_HEADERS = ['status', 'Name', 'Version', 'Architecture', 'Description']
-DPKG_STATE_RE = (r'(?P<status>\+\+\+)-(?P<Name>=.*)-(?P<Version>=.*)-'
-                 r'(?P<Architecture>=.*)-(?P<Description>=.*)')
-
-def dpkg_headers(header_line):
-    """Parse `dpkg -l` headers for field lengths
-
-    Parse the length of each of the fields.  Given the header line, such as:
-    '+++-==============-=============-============-==========================='
-
-    Return: Dictionary with field names for keys, and field lengths for values
-    """
-    header_match = re.match(DPKG_STATE_RE, header_line)
-    field_length = header_match.groupdict()
-    for key, field in field_length.items():
-        field_length[key] = len(field)
-    return field_length
-
-
-def dpkg_dict(headers, pkg_data):
-    """Given header lengths and pkg_data as a string return as dict
+def dpkg_info(_ansible_module, package_name):
+    """Given package name, use `dpkg-query -W` and return details (dict)
 
     Args:
-        headers -- a dictionary of header fields and lengths:
-                   (e.g., {'status': 3, ...})
-        pkg_data -- dpkg output string
-                   (e.g.,  'ii  cowsay     3.03+dfsg1-10 all...'
+        package_name -- string representating package name (e.g., cowsay)
 
     Returns:
         A dictionary mapping package field headers to pkg_data. For example:
-        {'status': 'ii ',
-         'Name': 'cowsay',
-         'Version': '3.03+dfsg1-10', ...}
-
+            {u'status': u'ii ',
+             u'package': u'cowsay'
+             u'version': u'3.03+dfsg1-10'...}
     """
-    data = pkg_data[:]
-    results = {}
-
-    for header in DPKG_HEADERS:
-        index = headers[header]
-        shaving = data[:index]
-        if not header == "status":
-            shaving = shaving.strip()
-        results[header] = shaving
-        data = data[index+1:]
-    return results
-
-def dpkg_parse(dpkg_out):
-    """Given dpkg -l output, return as dictionary
-
-    To avoid brittleness from parsing commnd line output, the fourth line is
-    used to dynamically find field length.  However, it is currently assumed
-    that all versions of the output have the headers on the fifth line and the
-    actual data on the sixth line of the output
-
-    Args:
-        dpkg_out -- multiline raw string data previously abotained
-                    from `dpkg -l`
-
-    Returns:
-        A dictionary mapping package field headers to pkg_data. For example:
-        {'status': 'ii ',
-         'Name': 'cowsay',
-         'Version': '3.03+dfsg1-10', ...}
-
-    """
-    output = dpkg_out.strip().split('\n')
-
-    headers = dpkg_headers(output[4])
-    return dpkg_dict(headers, output[5])
+    cmd = """dpkg-query -W -f='{"package":"${binary:Package}",
+                                "version": "${Version}",
+                                "maintaner": "${Maintainer}",
+                                "status": "${db:Status-Abbrev}",
+                                "depends": ["${Depends}"]}' %s""" % package_name
+    rc, out, err = _ansible_module.run_command(cmd)
+    if rc or err:
+        _ansible_module.fail_json(
+            msg="Executing command '%s' failed. rc: %s err: %s" % (
+                cmd, rc, err))
+    else:
+        out = json.loads(out)  # If this fails for whatever reason, let's fall
+                               # back to dpkg -l <pkgname>. See previous commit
+                               # (now removed) for execution/parsing
+    return out
 
 #########################################
 # END Alternate form of package_status
@@ -520,12 +475,7 @@ def package_status(m, pkgname, version, cache, state):
     has_files (bool)
     """
 
-    # BEGIN Hooking into alternate form of package_status
-    cmd = "dpkg -l %s" % pkgname
-    rc, out, err = m.run_command(cmd)
-    if not rc:
-        package_info = dpkg_parse(out)
-    # END Hooking into alternate form of package_status
+    package_info = dpkg_info(m, pkgname)  # Hooking into alternate form of package_status
 
     # DEBUG m: <ansible.module_utils.basic.AnsibleModule object at 0x7fd91a753b50>
     # DEBUG pkgname: cowsay
@@ -1097,7 +1047,6 @@ def get_updated_cache_time():
     return mtimestamp, updated_cache_time
 
 
-# TODO HERE:
 # https://github.com/ansible/ansible-modules-core/issues/2951
 def get_cache(module):
     '''Attempt to get the cache object and update till it works'''
