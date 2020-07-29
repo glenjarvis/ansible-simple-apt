@@ -1,72 +1,89 @@
 # ansible-simple-apt
+## Simpler Apt module for Ansible
 
-# Objective
+## Objective
 
-Remove the library dependency that blocks Ansible's use of apt in a
-Virtual env.
+To build an Ansible **apt** module that does not depend upon the **python-apt**
+(or **python3-apt**) library. This is necessary to fully support Ansible in a
+virtualenv (a common usecase when transitioning the Ansible environment from
+Python2 to Python3).
 
-```
-if sys.version_info[0] < 3:
-    PYTHON_APT = 'python-apt'
-else:
-    PYTHON_APT = 'python3-apt'
-```
+## Background
 
-Keep the same functionality without using this library. The command line is
-already being used, can the same behavior also be achieved without the library.
+### The Problem
 
-Root cause for adding the library was to fix this issue in 2013:
+Since 2013, the Ansible **apt** module has depended upon a the **python-apt**
+(or **python3-apt**) library. However those libraries are not supported outside
+of a Debian packaging environment.
 
+[Debian Bug #845330](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=845330)
+> Julian Andres Klode <jak@debian.org>
+> Aargh, not this whole PyPI thing again. Nobody ever officially uploaded
+> python-apt there. It is tightly coupled with APT, and not supposed to be
+> distributed in any fashion other than via Debian packages.There is no, and
+> has never been any support for PyPi. And I can say that I have absolutely no
+> interest in duplicating work there.
+
+Although there is a Python Package Index (PyPI) for this library, there were
+only two releases (2012, and 2015) with dubious semantic versioning. They also
+do not install in a virtualenv.
+
+### Why do we use the **python-apt** in the Ansible **apt** module?
+
+There was an Ansible bug reported:
 https://github.com/ansible/ansible/issues/3421
 
+And, in September 2013, a fix went into place
+
+>    Use low-level package objects in the apt module to check installed state
+>
+>    Packages which are half-installed are not adequately represented by
+>    the .is_installed field of the apt.package.Package object. By using the
+>    lower-level apt_pkg.Package object (which provides the .current_state
+>    field), we can check for a partially-installed state more accurately.
+>
+>    Fixes #3421
+
+However, it is still unclear why this was necessary since:
+
+* `dpkg -l` shows state and version.  state 'ii' is "fully installed, for realz"
+* `dpkg -L` shows files included in package.
+
+The command line is already being used in other parts of this module. So, we
+wish to fall-back to only that implementation. Although we hope to keep all
+functionality in the current Ansible **apt** module, we are willing to
+sacrifice some behavior for the simplicity of the implementation. It is still
+not known if any behavior will be lost.
+
+### Icing on the cake
+
+If the Ansible **apt** package does not find the **python-apt** (or
+**python3-apt**) installed, it immediately tries to install it for you -
+without prompting or asking.
+
+The original author of this apt fork would prefer to choose the packages to
+install, or at least have to confirm them instead of having them
+"auto-magically" install themselves.
 
 
-# Why
+## Example Use Case
 
-## Use Simpler Apt for Ansible in a Virtual Env
+The motivation for the author to create this fork of Ansible apt was to support
+Ansible running completely in a Python virutal environment. (e.g., when the
+**interpreter_python** is set to a location other than **/usr/bin/python**.)
 
-By default, the [Ansible apt
-module](https://docs.ansible.com/ansible/latest/modules/apt_module.html)
-requires the **apt**, **apt.debfile**, and **apt_pkg** packages to import:
-
-```HAS_PYTHON_APT = True
-try:
-    import apt
-    import apt.debfile
-    import apt_pkg
-except ImportError:
-    HAS_PYTHON_APT = False
-
-if sys.version_info[0] < 3:
-    PYTHON_APT = 'python-apt'
-else:
-    PYTHON_APT = 'python3-apt'
-```
-    
-This comes from the **python-apt** package. However, those packages do not
-install in a Python virtualenv (2 nor 3). They were originally created to be
-installed in the sytem-level Python.
-
-The **python-apt** package isn't actually necessary (the Ansible apt module
-uses the command line to do the apt install).
-
-This project is a fork of the Ansible **apt** module so that Ansible can be
-used from a Virtual Environment (e.g., when the **interpreter_python** is set
-to a location other than **/usr/bin/python**.)
-
-## Why Use a Virtualenv for Ansible?
+### Why Use a Virtualenv for Ansible?
 
 The question often comes up, *Why do this?* Isn't it easier to use the
-system-level Python? 
+system-level Python?
 
-It is true that the **python-apt** or **python3-apt** package was written by
-Ubuntu developers and is packaged as a Debian package. And, it was written to
-be used in Debian packages.
+The original author of this fork had to help manage a transition for Ansible,
+running in Python3 on over 8,000 hosts -- all of them already in production
+with a system Python of Python2.
 
-However, since the Ansible **apt** module has been written to use the
-**python-apt** packages, having it tightly coupled with the system level Python
-makes it difficult for some tasks, such as Python3 support in Ansible on older
-Debian hosts.
+There really is no other way to keep this tame except to have a controlled
+python virtual environment for Ansible and to explicitly set the
+**interpreter_python**
 
 
 ## What symptoms do you see in the venv / apt scenario?
