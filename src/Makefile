@@ -19,11 +19,11 @@ clean-test: ## remove test and coverage artifacts
 	rm -fr htmlcov/
 	rm -fr .pytest_cache
 
-rebuild: ## Rebuild Debian box for testing 
+rebuild: ## Rebuild Debian box for testing
 	vagrant destroy -f
 	vagrant up
 
-fetch: ## Fetch files from Debian box for faster development cycle 
+fetch: ## Fetch files from Debian box for faster development cycle
 	# Requires vagrant scp module
 	vagrant scp default:/vagrant/ansible.cfg .
 	vagrant scp default:/vagrant/modules/sapt.py modules/sapt.py
