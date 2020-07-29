@@ -446,9 +446,9 @@ def parse_apt_cache_policy(content):
 
     Returns:
         A dictionary of relevant fields. For example:
-            {'candidate': '3.03+dfsg1-10',
-             'package_name': 'cowsay',
-              'installed': '3.03+dfsg1-10'}
+            {'package_name': 'cowsay',
+             'installed': '3.03+dfsg1-10',
+             'candidate': '3.03+dfsg1-10'}
 
     Output of "apt-cache policy cowsay" (for example) looks like the
     following:
