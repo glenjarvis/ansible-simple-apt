@@ -428,6 +428,66 @@ def package_version_compare(version, other_version):
 #########################################
 # New section. Separated from old until functionality is ensured to not-change
 
+def _fail_if_error(_ansible_module, cmd, rc, err):
+    """Fail the ansible module if there is an error or return code is non zero"""
+
+    if rc or err:
+        _ansible_module.fail_json(
+            msg="Executing command '%s' failed. rc: %s err: %s" % (
+                cmd, rc, err))
+
+
+def parse_apt_cache_policy(content):
+    """Given output of "apt-cache policy" return relevant fields (dict)
+
+    Args:
+        content -- raw multi-line string representating output of
+                   apt-cache policy <package>
+
+    Returns:
+        A dictionary of relevant fields. For example:
+            {'candidate': '3.03+dfsg1-10',
+             'package_name': 'cowsay',
+              'installed': '3.03+dfsg1-10'}
+
+    Output of "apt-cache policy cowsay" (for example) looks like the
+    following:
+    cowsay:
+      Installed: 3.03+dfsg1-10
+      Candidate: 3.03+dfsg1-10
+      Version table:
+        ...
+
+    Note: This module parsing is currently incredibly simple. The author wants
+	  to do a simple state parser, however, until we see output that needs
+          it, we will stick with super simple.
+    """
+    results = {}
+    package_name_idx = 0
+    installed_idx = 1
+    candidate_idx = 2
+    version_table_idx = 3
+
+    output = content.split('\n')
+    assert output[version_table_idx] == "  Version table:"
+    results['package_name'] = output[package_name_idx].strip()[:-1]
+    results['installed'] = output[installed_idx].replace("Installed: ", "").strip()
+    results['candidate'] = output[candidate_idx].replace("Candidate: ", "").strip()
+
+    return results
+
+
+def apt_cache_policy_info(_ansible_module, package_name):
+    """Execute apt-cache policy and return results of relevent fields(dict)
+
+    See parse_apt_cache_policy for more info.
+    """
+    cmd = "apt-cache policy %s" % package_name
+    rc, out, err = _ansible_module.run_command(cmd)
+    _fail_if_error(_ansible_module, cmd, rc, err)
+    return parse_apt_cache_policy(out)
+
+
 def dpkg_info(_ansible_module, package_name):
     """Given package name, use `dpkg-query -W` and return details (dict)
 
@@ -446,15 +506,12 @@ def dpkg_info(_ansible_module, package_name):
                                 "status": "${db:Status-Abbrev}",
                                 "depends": ["${Depends}"]}' %s""" % package_name
     rc, out, err = _ansible_module.run_command(cmd)
-    if rc or err:
-        _ansible_module.fail_json(
-            msg="Executing command '%s' failed. rc: %s err: %s" % (
-                cmd, rc, err))
-    else:
-        out = json.loads(out)  # If this fails for whatever reason, let's fall
-                               # back to dpkg -l <pkgname>. See previous commit
-                               # (now removed) for execution/parsing
+    _fail_if_error(_ansible_module, cmd, rc, err)
+    out = json.loads(out)  # If this fails for whatever reason, let's fall
+                           # back to dpkg -l <pkgname>. See previous commit
+                           # (now removed) for execution/parsing
     return out
+
 
 #########################################
 # END Alternate form of package_status
@@ -475,7 +532,15 @@ def package_status(m, pkgname, version, cache, state):
     has_files (bool)
     """
 
-    package_info = dpkg_info(m, pkgname)  # Hooking into alternate form of package_status
+    #########################################################
+    # BEGIN Hooking in alternate form of package_status above
+    #########################################################
+    cache_info = apt_cache_policy_info(m, pkgname) # TODO: Hooking into alternate form of package_status
+    if cache_info['installed'] != '(none)':
+        package_info = dpkg_info(m, pkgname)  # TODO: Hooking into alternate form of package_status
+    #########################################################
+    # END Hooking in alternate form of package_status above
+    #########################################################
 
     # DEBUG m: <ansible.module_utils.basic.AnsibleModule object at 0x7fd91a753b50>
     # DEBUG pkgname: cowsay
