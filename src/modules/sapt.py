@@ -559,9 +559,24 @@ def package_status(m, pkgname, version, cache, state):
     #########################################################
     # BEGIN Hooking in alternate form of package_status above
     #########################################################
-    cache_info = apt_cache_policy_info(m, pkgname) # TODO: Hooking into alternate form of package_status
-    if cache_info['installed'] != '(none)':
-        package_info = dpkg_info(m, pkgname)  # TODO: Hooking into alternate form of package_status
+    results = {
+        'package_is_installed': None,
+        'version_is_installed': None,
+        'version_is_upgradable': None,
+        'has_files': None
+    }
+
+    cache_info = apt_cache_policy_info(m, pkgname)
+    if 'installed' not in cache_info or cache_info['installed'] == '(none)':
+        results['package_is_installed'] = False
+        results['version_is_installed'] = False
+        results['has_files'] = False
+    else:
+        package_info = dpkg_info(m, pkgname)
+        files = dpkg_files(m, pkgname)
+        if len(files):
+            results['has_files'] = True
+
     #########################################################
     # END Hooking in alternate form of package_status above
     #########################################################
