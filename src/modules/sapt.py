@@ -512,6 +512,17 @@ def dpkg_info(_ansible_module, package_name):
                            # (now removed) for execution/parsing
     return out
 
+def dpkg_files(_ansible_module, package_name):
+    """Given a package name, return list of files in package
+
+    This is the equivalent of `dpkg-query -L <package_name>`
+    """
+
+    cmd = "dpkg-query -L %s" % package_name
+    rc, out, err = _ansible_module.run_command(cmd)
+    _fail_if_error(_ansible_module, cmd, rc, err)
+
+    return out.strip().split('\n')
 
 #########################################
 # END Alternate form of package_status
