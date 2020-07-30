@@ -458,9 +458,21 @@ def parse_apt_cache_policy(content):
       Version table:
         ...
 
-    Note: This module parsing is currently incredibly simple. The author wants
-	  to do a simple state parser, however, until we see output that needs
-          it, we will stick with super simple.
+    Note #1: If no package is in the cache
+
+    If the package being asked for is non-existant (e.g., foo),
+    "apt-cache policy" doesn't return all four lines. Instead, one will see
+    something similar to (with a successful return code):
+
+    > $ apt-cache policy foo
+    > N: Unable to locate package foo
+
+    If there are less than four lines in the output, we will assume that this this
+    package doesn't exit.
+
+    Note #2: This module parsing is currently incredibly simple. The
+             author wants to do a simple state parser, however, until we
+             see output that needs it, we will stick with super simple.
     """
     results = {}
     package_name_idx = 0
@@ -468,11 +480,12 @@ def parse_apt_cache_policy(content):
     candidate_idx = 2
     version_table_idx = 3
 
-    output = content.split('\n')
-    assert output[version_table_idx] == "  Version table:"
-    results['package_name'] = output[package_name_idx].strip()[:-1]
-    results['installed'] = output[installed_idx].replace("Installed: ", "").strip()
-    results['candidate'] = output[candidate_idx].replace("Candidate: ", "").strip()
+    output = content.strip().split('\n')
+    if len(output) >= 4:
+        assert output[version_table_idx] == "  Version table:"
+        results['package_name'] = output[package_name_idx].strip()[:-1]
+        results['installed'] = output[installed_idx].replace("Installed: ", "").strip()
+        results['candidate'] = output[candidate_idx].replace("Candidate: ", "").strip()
 
     return results
 
