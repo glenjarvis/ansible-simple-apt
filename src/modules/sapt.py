@@ -420,13 +420,76 @@ def package_version_compare(version, other_version):
     except AttributeError:
         return apt_pkg.VersionCompare(version, other_version)
 
+###########################################################
+# BEGIN package_status library removal supporting functions
+###########################################################
+def _count_leading_spaces(line):
+    """Given a single line, return how many spaces are in front
 
+    Args:
+        line -- single line (typically from command line output)
 
+    Returns:
+        Number of spaces (int) preceeding the first non-space character
+    """
+    count = 0
+    for character in line:
+        count += 1
+        if character != " ":
+            break
+    return count
 
-#########################################
-# BEGIN Alternate form of package_status
-#########################################
-# New section. Separated from old until functionality is ensured to not-change
+def _indents_from_list(version_list):
+    """Given lines beginning with a varied number of spaces, return sorted list of number of spaces
+
+    Args:
+        version_list -- raw strings representing versions. For example:
+            1.0.9.8.6 0
+                500 http://security.debian.org/ jessie/updates/main amd64 Packages
+
+    Returns:
+        Sorted number of preceeding spaces for each level of input (e.g., [4, 8])
+    """
+
+    indents = set()
+    for row in version_list:
+        indents.add(_count_leading_spaces(row))
+
+    return sorted(indents)
+
+def _parse_version_table(raw_version_list):
+    """Given test of version table, create version_list
+
+    Args:
+        raw_version_list -- raw multi-line string representating output of
+            version table such as:
+                Version table:
+                   1.0.9.8.6 0
+                      500 http://security.debian.org/ jessie/updates/main amd64 Packages
+               *** 1.0.9.8.5 0
+                      100 /var/lib/dpkg/status
+                   1.0.9.8.4 0
+                      500 http://httpredir.debian.org/debian/ jessie/main amd64 Packages
+
+    Returns:
+        A list of versions from first level indent such as:
+            ["1.0.9.8.4", "1.0.9.8.5", "1.0.9.8.6"]
+
+    """
+    versions = []
+
+    # Replacing any '***' in the lines
+    version_list = [item.replace('*', ' ') for item in raw_version_list]
+
+    spaces = _indents_from_list(version_list)
+    assert len(spaces) >= 2  # Our assumptions from the input above
+
+    version_level = spaces[0]
+    for row in version_list:
+        if _count_leading_spaces(row) == version_level:
+            versions.append(row.strip().split()[0])
+
+    return versions
 
 def _fail_if_error(_ansible_module, cmd, rc, err):
     """Fail the ansible module if there is an error or return code is non zero"""
@@ -435,7 +498,6 @@ def _fail_if_error(_ansible_module, cmd, rc, err):
         _ansible_module.fail_json(
             msg="Executing command '%s' failed. rc: %s err: %s" % (
                 cmd, rc, err))
-
 
 def parse_apt_cache_policy(content):
     """Given output of "apt-cache policy" return relevant fields (dict)
@@ -486,6 +548,8 @@ def parse_apt_cache_policy(content):
         results['package_name'] = output[package_name_idx].strip()[:-1]
         results['installed'] = output[installed_idx].replace("Installed: ", "").strip()
         results['candidate'] = output[candidate_idx].replace("Candidate: ", "").strip()
+        results['versions'] =_parse_version_table(output[version_table_idx+1:])
+
 
     return results
 
@@ -537,9 +601,9 @@ def dpkg_files(_ansible_module, package_name):
 
     return out.strip().split('\n')
 
-#########################################
-# END Alternate form of package_status
-#########################################
+###########################################################
+# END package_status library removal supporting functions
+###########################################################
 
 def package_status(m, pkgname, version, cache, state):
     """Determine package's currently installed status
