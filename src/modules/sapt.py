@@ -264,6 +264,7 @@ import warnings
 warnings.filterwarnings('ignore', "apt API not stable yet", FutureWarning)
 
 import datetime
+from collections import OrderedDict
 import fnmatch
 import itertools
 import json
@@ -619,128 +620,203 @@ def package_status(m, pkgname, version, cache, state):
     package_is_upgradable (bool)
     has_files (bool)
     """
+    results_file = open("/tmp/test_results.txt", 'a')
+    results_file.write("Function_called: True\n")
 
     #########################################################
     # BEGIN Hooking in alternate form of package_status above
     #########################################################
-    results = {
-        'package_is_installed': None,
-        'version_is_installed': None,
-        'version_is_upgradable': None,
-        'has_files': None
-    }
+    results = OrderedDict((
+        ('package_is_installed',  False),
+        ('version_is_installed', False),
+        ('version_is_upgradable', False),
+        ('has_files', False)
+    ))
+
+    def is_pkg_installed(cache_info):
+        """from apt-cache policy (apt_cache_policy_info)"""
+        return 'installed' in cache_info and cache_info['installed'] != '(none)'
+
+    def is_version_installed(version, cache_info):
+        if version:
+            return version == cache_info['candidate']
+        else:
+            # Yes, this is weird. It's the logic built into the assumptions from when 
+            # we had very large try/except blocks using the python_apt library
+            # Eventually this logic should be refactored. The first step is to remove
+            # dependency upon python_apt library
+            return True
+
+    def available_upgrades(version, cache_info):
+        if version:
+            avail_upgrades = fnmatch.filter(cache_info['versions'], version)
+        else:
+            avail_upgrades = cache_info['versions']
+        return avail_upgrades
+
+    def is_upgradable(cache_info):
+        """Given cach info on package return package is upgradable """
+
+        results_file.write("cache_info: %s\n" % cache_info)
+        return is_pkg_installed(cache_info) and (
+            cache_info['installed'] != cache_info['candidate'])
+
+    files = dpkg_files(m, pkgname)
+    if len(files):
+        results['has_files'] = True
 
     cache_info = apt_cache_policy_info(m, pkgname)
-    if 'installed' not in cache_info or cache_info['installed'] == '(none)':
+
+    if is_pkg_installed(cache_info):
+        results_file.write("DEBUG 2\n")
+        results['package_is_installed'] = True
+        results['version_is_installed'] = is_version_installed(version, cache_info)
+        results['version_is_upgradable'] =\
+            not cache_info['installed'] == cache_info['candidate']
+
+        package_info = dpkg_info(m, pkgname)
+    else:
+        results_file.write("DEBUG 3\n")
         results['package_is_installed'] = False
         results['version_is_installed'] = False
-        results['has_files'] = False
-    else:
-        package_info = dpkg_info(m, pkgname)
-        files = dpkg_files(m, pkgname)
-        if len(files):
-            results['has_files'] = True
+
+    results['package_is_upgradable'] = is_upgradable(cache_info)
+
+    results_file.write("|08-XX|%s|%s|%s|%s\n" % (results["package_is_installed"], results["version_is_installed"], results["package_is_upgradable"], results["has_files"]))
+    return results['package_is_installed'],\
+           results['version_is_installed'],\
+           results['version_is_upgradable'],\
+           results['has_files']
 
     #########################################################
     # END Hooking in alternate form of package_status above
     #########################################################
 
-    # DEBUG m: <ansible.module_utils.basic.AnsibleModule object at 0x7fd91a753b50>
-    # DEBUG pkgname: cowsay
-    # DEBUG version: None
-    # DEBUG cache: <apt.cache.Cache object at 0x7fd91f2d1550>
-    # DEBUG state: install
-    try:
-        # get the package from the cache, as well as the
-        # low-level apt_pkg.Package object which contains
-        # state fields not directly accessible from the
-        # higher-level apt.package.Package object.
+# GLEN
+#DEBUG 4
+#DEBUG 4b
+#DEBUG 7
+#DEBUG 8
+#DEBUG 11
+#DEBUG 22
+#DEBUG 23
+#DEBUG 25
+#|08-XX|False|False|False|True
 
-        # DEBUG pkgname: cowsay
-        # cache[pkgname]: <Package: name:'cowsay' architecture='amd64' id:8612L>
-        pkg = cache[pkgname]
-        # DEBUG ll_pkg: <apt_pkg.Package object: name:'cowsay' section: 'games' id:8612>
-        ll_pkg = cache._cache[pkgname]  # the low-level package object
-    except KeyError:
-        if state == 'install':
-            try:
-                provided_packages = cache.get_providing_packages(pkgname)
-                if provided_packages:
-                    is_installed = False
-                    upgradable = False
-                    version_ok = False
-                    # when virtual package providing only one package, look up status of target package
-                    if cache.is_virtual_package(pkgname) and len(provided_packages) == 1:
-                        package = provided_packages[0]
-                        installed, version_ok, upgradable, has_files = package_status(m, package.name, version, cache, state='install')
-                        if installed:
-                            is_installed = True
-                    return is_installed, version_ok, upgradable, False
-                m.fail_json(msg="No package matching '%s' is available" % pkgname)
-            except AttributeError:
-                # python-apt version too old to detect virtual packages
-                # mark as upgradable and let apt-get install deal with it
-                return False, False, True, False
-        else:
-            return False, False, False, False
-    try:
-        has_files = len(pkg.installed_files) > 0
-        # has_files: True
-    except UnicodeDecodeError:
-        has_files = True
-    except AttributeError:
-        has_files = False  # older python-apt cannot be used to determine non-purged
-
-    try:
-        package_is_installed = ll_pkg.current_state == apt_pkg.CURSTATE_INSTALLED
-        # DEBUG: package_is_installed: True
-        # DEBUG: ll_pkg.current_state: 6
-        # DEBUG: apt_pkg.CURSTATE_INSTALLED: 6
-    except AttributeError:  # python-apt 0.7.X has very weak low-level object
-        try:
-            # might not be necessary as python-apt post-0.7.X should have current_state property
-            package_is_installed = pkg.is_installed
-        except AttributeError:
-            # assume older version of python-apt is installed
-            package_is_installed = pkg.isInstalled
-
-    version_is_installed = package_is_installed
-    # DEBUG: version_is_installed: True`
-    if version:
-        versions = package_versions(pkgname, pkg, cache._cache)
-        avail_upgrades = fnmatch.filter(versions, version)
-
-        if package_is_installed:
-            try:
-                installed_version = pkg.installed.version
-            except AttributeError:
-                installed_version = pkg.installedVersion
-
-            # check if the version is matched as well
-            version_is_installed = fnmatch.fnmatch(installed_version, version)
-
-            # Only claim the package is upgradable if a candidate matches the version
-            package_is_upgradable = False
-            for candidate in avail_upgrades:
-                if package_version_compare(candidate, installed_version) > 0:
-                    package_is_upgradable = True
-                    break
-        else:
-            package_is_upgradable = bool(avail_upgrades)
-    else:
-        try:
-            package_is_upgradable = pkg.is_upgradable
-            # DEBUG: pkg.is_upgradable: False
-        except AttributeError:
-            # assume older version of python-apt is installed
-            package_is_upgradable = pkg.isUpgradable
-
-    # DEBUG: package_is_installed: True
-    # DEBUG: version_is_installed: True
-    # DEBUG: package_is_upgradable: False
-    # DEBUG: has_files: True
-    return package_is_installed, version_is_installed, package_is_upgradable, has_files
-
+#    results_file.write("DEBUG 4\n")
+#    try:
+#        # get the package from the cache, as well as the
+#        # low-level apt_pkg.Package object which contains
+#        # state fields not directly accessible from the
+#        # higher-level apt.package.Package object.
+#
+#        pkg = cache[pkgname]
+#        ll_pkg = cache._cache[pkgname]  # the low-level package object
+#        results_file.write("DEBUG 4b\n")
+#    except KeyError:
+#        results_file.write("DEBUG 5\n")
+#        if state == 'install':
+#            try:
+#                provided_packages = cache.get_providing_packages(pkgname)
+#                if provided_packages:
+#                    is_installed = False
+#                    upgradable = False
+#                    version_ok = False
+#                    # when virtual package providing only one package, look up status of target package
+#                    if cache.is_virtual_package(pkgname) and len(provided_packages) == 1:
+#                        package = provided_packages[0]
+#                        installed, version_ok, upgradable, has_files = package_status(m, package.name, version, cache, state='install')
+#                        if installed:
+#                            is_installed = True
+#                        results_file.write("|%s|%s|%s|%s\n" % (is_installed, version_ok, upgradable, False))
+#                    return is_installed, version_ok, upgradable, False
+#                m.fail_json(msg="No package matching '%s' is available" % pkgname)
+#            except AttributeError:
+#                # python-apt version too old to detect virtual packages
+#                # mark as upgradable and let apt-get install deal with it
+#                results_file.write("|%s|%s|%s|%s\n" % (False, False, True, False))
+#                return False, False, True, False
+#        else:
+#            results_file.write("DEBUG 6\n")
+#            results_file.write("|%s|%s|%s|%s\n" % (False, False, False, False))
+#            return False, False, False, False
+#    try:
+#        results_file.write("DEBUG 7\n")
+#        has_files = len(pkg.installed_files) > 0
+#        # has_files: True
+#    except UnicodeDecodeError:
+#        has_files = True
+#    except AttributeError:
+#        has_files = False  # older python-apt cannot be used to determine non-purged
+#
+#    try:
+#        results_file.write("DEBUG 8\n")
+#        package_is_installed = ll_pkg.current_state == apt_pkg.CURSTATE_INSTALLED
+#    except AttributeError:  # python-apt 0.7.X has very weak low-level object
+#        try:
+#            results_file.write("DEBUG 9\n")
+#            # might not be necessary as python-apt post-0.7.X should have current_state property
+#            package_is_installed = pkg.is_installed
+#        except AttributeError:
+#            results_file.write("DEBUG 10\n")
+#            # assume older version of python-apt is installed
+#            package_is_installed = pkg.isInstalled
+#
+#    version_is_installed = package_is_installed
+#    results_file.write("DEBUG 11\n")
+#    if version:
+#        results_file.write("DEBUG 12\n")
+#        versions = package_versions(pkgname, pkg, cache._cache)
+#
+#        avail_upgrades = fnmatch.filter(versions, version)
+#
+#        results_file.write("DEBUG 13: %s\n" % package_is_installed)
+#        if package_is_installed:
+#            results_file.write("DEBUG 14\n")
+#            try:
+#                results_file.write("DEBUG 15\n")
+#                installed_version = pkg.installed.version
+#            except AttributeError:
+#                results_file.write("DEBUG 16\n")
+#                installed_version = pkg.installedVersion
+#
+#            results_file.write("DEBUG 17\n")
+#            # check if the version is matched as well
+#            version_is_installed = fnmatch.fnmatch(installed_version, version)
+#
+#            # Only claim the package is upgradable if a candidate matches the version
+#            results_file.write("DEBUG 18\n")
+#            package_is_upgradable = False
+#            for candidate in avail_upgrades:
+#                results_file.write("DEBUG 19\n")
+#                if package_version_compare(candidate, installed_version) > 0:
+#                    results_file.write("DEBUG 20\n")
+#                    package_is_upgradable = True
+#                    break
+#        else:
+#            results_file.write("DEBUG 21\n")
+#            package_is_upgradable = bool(avail_upgrades)
+#    else:
+#        results_file.write("DEBUG 22\n")
+#        try:
+#            results_file.write("DEBUG 23\n")
+#            # <Package: name:'389-ds-base' architecture='amd64' id:63L>
+#            results_file.write("pkg.is_upgradable: %s\n" % pkg.is_upgradable)
+#
+#            package_is_upgradable = pkg.is_upgradable
+#        except AttributeError:
+#            results_file.write("DEBUG 24\n")
+#            results_file.write("pkg.isUpgradable: .%s\n" % pkg.isUpgradable)
+#            # assume older version of python-apt is installed
+#            package_is_upgradable = pkg.isUpgradable
+#
+#    # DEBUG
+#    results_file.write("DEBUG 25\n")
+#    results_file.write("|%s|%s|%s|%s|%s\n" % ("08-XX",
+#        package_is_installed, version_is_installed,
+#        package_is_upgradable, has_files))
+#    return package_is_installed, version_is_installed, package_is_upgradable, has_files
+#
 
 def expand_dpkg_options(dpkg_options_compressed):
     options_list = dpkg_options_compressed.split(',')
@@ -1036,6 +1112,13 @@ def remove(m, pkgspec, cache, purge=False, force=False,
     pkgspec = expand_pkgspec_from_fnmatches(m, pkgspec, cache)
     for package in pkgspec:
         name, version = package_split(package)
+        with open("/tmp/test_results.txt", 'a') as f:
+            f.write("m: %s\n" % m)
+            f.write("name: %s\n" % name)
+            f.write("version: %s\n" % version)
+            f.write("cache: %s\n" % cache)
+            f.write("state: %s\n" % remove)
+            f.write("installed: %s installed_version: %s upgradable: %s has_files: %s\n" % package_status(m, name, version, cache, state='remove'))
         installed, installed_version, upgradable, has_files = package_status(m, name, version, cache, state='remove')
         if installed_version or (has_files and purge):
             pkg_list.append("'%s'" % package)
@@ -1421,4 +1504,6 @@ def main():
 
 
 if __name__ == "__main__":
+    with open("/tmp/test_results.txt", 'a') as f:
+        f.write("sapt_module_called: True\n")
     main()

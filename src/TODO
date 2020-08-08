@@ -1,0 +1,7 @@
+grab notes from slack about the command line option to get info
+
+discuss how dpkg- json is the way to go
+
+
+    #dpkg -l shows state and version. state 'ii' is "fully installed, for realz"
+    #dpkg -L shows files included in package.

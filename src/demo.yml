@@ -4,11 +4,12 @@
   tasks:
     - debug: msg="Ansible is working."
 
-- name: Demo Playbook
+- name: Demo Install
   hosts: localhost
   tasks:
-    - sapt:
-        name: cowsay
-        state: present
+    - name: Test the install
+      sapt:
+        name: 389-ds-base
+        state: absent
       become: yes
 

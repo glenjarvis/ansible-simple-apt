@@ -27,4 +27,11 @@ fetch: ## Fetch files from Debian box for faster development cycle
 	# Requires vagrant scp module
 	vagrant scp default:/vagrant/ansible.cfg .
 	vagrant scp default:/vagrant/modules/sapt.py modules/sapt.py
+	vagrant scp default:/vagrant/RESULTS_add.txt RESULTS_add.txt
+	vagrant scp default:/vagrant/run_test.sh run_test.sh
+	vagrant scp default:/vagrant/demo.yml demo.yml
 
+test_run: rebuild
+	vagrant scp default:/tmp/test_results.txt tmp_results.txt
+	cat tmp_results.txt >> RESULTS.txt
+	rm tmp_results.txt
