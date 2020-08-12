@@ -420,9 +420,9 @@ def package_version_compare(version, other_version):
     except AttributeError:
         return apt_pkg.VersionCompare(version, other_version)
 
-###########################################################
-# BEGIN package_status library removal supporting functions
-###########################################################
+###########################################
+# BEGIN package_status (python_apt removal)
+###########################################
 def _count_leading_spaces(line):
     """Given a single line, return how many spaces are in front
 
@@ -550,7 +550,6 @@ def parse_apt_cache_policy(content):
         results['candidate'] = output[candidate_idx].replace("Candidate: ", "").strip()
         results['versions'] =_parse_version_table(output[version_table_idx+1:])
 
-
     return results
 
 
@@ -565,30 +564,6 @@ def apt_cache_policy_info(_ansible_module, package_name):
     return parse_apt_cache_policy(out)
 
 
-def dpkg_info(_ansible_module, package_name):
-    """Given package name, use `dpkg-query -W` and return details (dict)
-
-    Args:
-        package_name -- string representating package name (e.g., cowsay)
-
-    Returns:
-        A dictionary mapping package field headers to pkg_data. For example:
-            {u'status': u'ii ',
-             u'package': u'cowsay'
-             u'version': u'3.03+dfsg1-10'...}
-    """
-    cmd = """dpkg-query -W -f='{"package":"${binary:Package}",
-                                "version": "${Version}",
-                                "maintaner": "${Maintainer}",
-                                "status": "${db:Status-Abbrev}",
-                                "depends": ["${Depends}"]}' %s""" % package_name
-    rc, out, err = _ansible_module.run_command(cmd)
-    _fail_if_error(_ansible_module, cmd, rc, err)
-    out = json.loads(out)  # If this fails for whatever reason, let's fall
-                           # back to dpkg -l <pkgname>. See previous commit
-                           # (now removed) for execution/parsing
-    return out
-
 def dpkg_files(_ansible_module, package_name):
     """Given a package name, return list of files in package
 
@@ -601,9 +576,6 @@ def dpkg_files(_ansible_module, package_name):
 
     return out.strip().split('\n')
 
-###########################################################
-# END package_status library removal supporting functions
-###########################################################
 
 def package_status(m, pkgname, version, cache, state):
     """Determine package's currently installed status
@@ -619,128 +591,127 @@ def package_status(m, pkgname, version, cache, state):
     package_is_upgradable (bool)
     has_files (bool)
     """
-
-    #########################################################
-    # BEGIN Hooking in alternate form of package_status above
-    #########################################################
-    results = {
-        'package_is_installed': None,
-        'version_is_installed': None,
-        'version_is_upgradable': None,
-        'has_files': None
+    results ={
+        'package_is_installed': False,
+        'version_is_installed': False,
+        'version_is_upgradable': False,
+        'has_files': False
     }
 
+    def is_pkg_installed(cache_info):
+        """from apt-cache policy (apt_cache_policy_info)"""
+        return 'installed' in cache_info and cache_info['installed'] != '(none)'
+
+
+    def is_version_installed(version, cache_info):
+        """Given version, check if it is installed from cache_info"""
+
+        if version:
+            return version == cache_info['installed']
+        else:
+            # Yes, this is weird. It's the logic built into the assumptions from when
+            # we had very large try/except blocks using the python_apt library
+            # Eventually this logic should be refactored. The first step is to remove
+            # dependency upon python_apt library
+            return True
+
+
+    def available_upgrades(version, cache_info):
+        """Given version and cache_info, return available upgrades
+
+        Args:
+            version -- intended version to install (string) (Example: '1.3.3.5-4')
+            cache_info -- Dictionary representing output of `apt-cache policy <pkg>`
+                       Note that the 'versions' order follows top-down of command output
+                       Example: {'versions': ['1.3.3.5-4+deb8u7', '1.3.3.5-4'],
+                                 'candidate': '1.3.3.5-4+deb8u7',
+                                 'package_name': '389-ds-base',
+                                 'installed': '(none)'}
+
+        Returns:
+            Any upgrade candidate from installed version "forward" input
+            parameter 'version' (including version).
+            For example (for given input examples): ['1.3.3.5-4']
+        """
+
+        _version_list = cache_info['versions'][::-1]
+
+        if cache_info['installed'] == '(none)':
+            start_idx = 0
+        else:
+            start_idx = _version_list.index(cache_info['installed'])
+
+        if version:
+            stop_idx = _version_list.index(version)
+        else:
+            stop_idx = len(_version_list)
+
+        return _version_list[start_idx:stop_idx+1]
+
+
+    def is_upgradable(version, cache_info):
+        """Given version and package cache info return package is upgradable
+
+        As far as the originally used 'python_apt' library was concerned, a
+        package was not upgradable if not installed.
+
+        > .../dist-packages/apt/package.py
+        >     return (self.is_installed and
+        >         self._pcache._depcache.is_upgradable(self._pkg))
+
+	However, extra complexity related to provided version and if package is
+        installed was added to the original source of this function. When
+	refactoring to remove the python_apt library dependencies, the extra
+	complexity regarding versions installed and a bool(avail_upgrades) was
+        left in this function to preserve original behavior.
+
+        Over time, we should consider simplifying this
+        """
+        package_installed = is_pkg_installed(cache_info)
+        avail_upgrades = available_upgrades(version, cache_info)
+
+        if version:
+            if package_installed:
+                if len(avail_upgrades) == 1 and avail_upgrades[0] == version:
+                    return False
+                return bool(avail_upgrades)
+            else:
+                upgradable = False
+                for potential_version in avail_upgrades:
+                    if version == potential_version:
+                        upgradable = True
+                return upgradable
+        else:
+            return package_installed and (
+                cache_info['installed'] != cache_info['candidate'])
+
+
+    def has_package_files(_ansible_module, package_name):
+        """Given package_name, return True if package has files"""
+
+        return bool(len(dpkg_files(_ansible_module, package_name)))
+
     cache_info = apt_cache_policy_info(m, pkgname)
-    if 'installed' not in cache_info or cache_info['installed'] == '(none)':
+    if is_pkg_installed(cache_info):
+        results['package_is_installed'] = True
+        results['version_is_installed'] = is_version_installed(version, cache_info)
+    else:
         results['package_is_installed'] = False
         results['version_is_installed'] = False
-        results['has_files'] = False
-    else:
-        package_info = dpkg_info(m, pkgname)
-        files = dpkg_files(m, pkgname)
-        if len(files):
-            results['has_files'] = True
 
-    #########################################################
-    # END Hooking in alternate form of package_status above
-    #########################################################
+    results['package_is_upgradable'] = is_upgradable(version, cache_info)
+    results['has_files'] = has_package_files(m, pkgname)
 
-    # DEBUG m: <ansible.module_utils.basic.AnsibleModule object at 0x7fd91a753b50>
-    # DEBUG pkgname: cowsay
-    # DEBUG version: None
-    # DEBUG cache: <apt.cache.Cache object at 0x7fd91f2d1550>
-    # DEBUG state: install
-    try:
-        # get the package from the cache, as well as the
-        # low-level apt_pkg.Package object which contains
-        # state fields not directly accessible from the
-        # higher-level apt.package.Package object.
+    with open("/tmp/test_results.txt", 'a') as results_file:
+        results_file.write("|08-XX|%s|%s|%s|%s\n" % (results["package_is_installed"], results["version_is_installed"], results["package_is_upgradable"], results["has_files"]))
+    return results['package_is_installed'],\
+           results['version_is_installed'],\
+           results['version_is_upgradable'],\
+           results['has_files']
 
-        # DEBUG pkgname: cowsay
-        # cache[pkgname]: <Package: name:'cowsay' architecture='amd64' id:8612L>
-        pkg = cache[pkgname]
-        # DEBUG ll_pkg: <apt_pkg.Package object: name:'cowsay' section: 'games' id:8612>
-        ll_pkg = cache._cache[pkgname]  # the low-level package object
-    except KeyError:
-        if state == 'install':
-            try:
-                provided_packages = cache.get_providing_packages(pkgname)
-                if provided_packages:
-                    is_installed = False
-                    upgradable = False
-                    version_ok = False
-                    # when virtual package providing only one package, look up status of target package
-                    if cache.is_virtual_package(pkgname) and len(provided_packages) == 1:
-                        package = provided_packages[0]
-                        installed, version_ok, upgradable, has_files = package_status(m, package.name, version, cache, state='install')
-                        if installed:
-                            is_installed = True
-                    return is_installed, version_ok, upgradable, False
-                m.fail_json(msg="No package matching '%s' is available" % pkgname)
-            except AttributeError:
-                # python-apt version too old to detect virtual packages
-                # mark as upgradable and let apt-get install deal with it
-                return False, False, True, False
-        else:
-            return False, False, False, False
-    try:
-        has_files = len(pkg.installed_files) > 0
-        # has_files: True
-    except UnicodeDecodeError:
-        has_files = True
-    except AttributeError:
-        has_files = False  # older python-apt cannot be used to determine non-purged
-
-    try:
-        package_is_installed = ll_pkg.current_state == apt_pkg.CURSTATE_INSTALLED
-        # DEBUG: package_is_installed: True
-        # DEBUG: ll_pkg.current_state: 6
-        # DEBUG: apt_pkg.CURSTATE_INSTALLED: 6
-    except AttributeError:  # python-apt 0.7.X has very weak low-level object
-        try:
-            # might not be necessary as python-apt post-0.7.X should have current_state property
-            package_is_installed = pkg.is_installed
-        except AttributeError:
-            # assume older version of python-apt is installed
-            package_is_installed = pkg.isInstalled
-
-    version_is_installed = package_is_installed
-    # DEBUG: version_is_installed: True`
-    if version:
-        versions = package_versions(pkgname, pkg, cache._cache)
-        avail_upgrades = fnmatch.filter(versions, version)
-
-        if package_is_installed:
-            try:
-                installed_version = pkg.installed.version
-            except AttributeError:
-                installed_version = pkg.installedVersion
-
-            # check if the version is matched as well
-            version_is_installed = fnmatch.fnmatch(installed_version, version)
-
-            # Only claim the package is upgradable if a candidate matches the version
-            package_is_upgradable = False
-            for candidate in avail_upgrades:
-                if package_version_compare(candidate, installed_version) > 0:
-                    package_is_upgradable = True
-                    break
-        else:
-            package_is_upgradable = bool(avail_upgrades)
-    else:
-        try:
-            package_is_upgradable = pkg.is_upgradable
-            # DEBUG: pkg.is_upgradable: False
-        except AttributeError:
-            # assume older version of python-apt is installed
-            package_is_upgradable = pkg.isUpgradable
-
-    # DEBUG: package_is_installed: True
-    # DEBUG: version_is_installed: True
-    # DEBUG: package_is_upgradable: False
-    # DEBUG: has_files: True
-    return package_is_installed, version_is_installed, package_is_upgradable, has_files
-
+#########################################
+# END package_status (python_apt removal)
+#########################################
 
 def expand_dpkg_options(dpkg_options_compressed):
     options_list = dpkg_options_compressed.split(',')

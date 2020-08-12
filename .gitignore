@@ -139,3 +139,5 @@ cython_debug/
 
 # Local Vagrant info
 *.vagrant
+
+run_test_case.yml
