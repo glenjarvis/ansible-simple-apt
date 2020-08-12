@@ -7,8 +7,6 @@
 # recrod that debugging information, destroy the vagrant box, and rebuild using
 # setup_venv.sh (instead of this file).
 
-set -e
-
 echo "Setting up Vagrant host"
 sudo apt-get install -y python-pip-whl
 sudo apt-get install -y python-pip
@@ -18,11 +16,4 @@ sudo pip install ansible  # Note this is often a lower version (like 1.7.2) vs
 
 cd /vagrant
 ansible --version
-
-function setup_previous_package_version {
-    sudo apt-get install -y 389-ds-base-libs=1.3.3.5-4
-    sudo apt-get install -y 389-ds-base=1.3.3.5-4
-}
-
-setup_previous_package_version
-bash ./run_test.sh
+ansible-playbook demo.yml

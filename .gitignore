@@ -140,4 +140,7 @@ cython_debug/
 # Local Vagrant info
 *.vagrant
 
+# Temporary files created during automated testing
+run_test.sh
 run_test_case.yml
+RESULTS.txt
