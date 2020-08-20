@@ -423,6 +423,14 @@ def package_version_compare(version, other_version):
 ###########################################
 # BEGIN package_status (python_apt removal)
 ###########################################
+# This fork was created to remove the dependencies on the python_apt library.
+# Until the library is completely removed, each changes are being completely
+# contained within this BEGIN/END block of code.
+#
+# After the library is completely removed and we have an adequate set of tests,
+# then, we can begin to refactor and clean this so that it is more organized
+# and manageable.
+
 def _count_leading_spaces(line):
     """Given a single line, return how many spaces are in front
 
@@ -438,6 +446,7 @@ def _count_leading_spaces(line):
         if character != " ":
             break
     return count
+
 
 def _indents_from_list(version_list):
     """Given lines beginning with a varied number of spaces, return sorted list of number of spaces
@@ -491,13 +500,13 @@ def _parse_version_table(raw_version_list):
 
     return versions
 
-def _fail_if_error(_ansible_module, cmd, rc, err):
+def _fail_if_error(_ansible_module, cmd, return_code, err):
     """Fail the ansible module if there is an error or return code is non zero"""
 
-    if rc or err:
+    if return_code or err:
         _ansible_module.fail_json(
             msg="Executing command '%s' failed. rc: %s err: %s" % (
-                cmd, rc, err))
+                cmd, return_code, err))
 
 def parse_apt_cache_policy(content):
     """Given output of "apt-cache policy" return relevant fields (dict)
@@ -548,7 +557,7 @@ def parse_apt_cache_policy(content):
         results['package_name'] = output[package_name_idx].strip()[:-1]
         results['installed'] = output[installed_idx].replace("Installed: ", "").strip()
         results['candidate'] = output[candidate_idx].replace("Candidate: ", "").strip()
-        results['versions'] =_parse_version_table(output[version_table_idx+1:])
+        results['versions'] = _parse_version_table(output[version_table_idx+1:])
 
     return results
 
@@ -559,8 +568,8 @@ def apt_cache_policy_info(_ansible_module, package_name):
     See parse_apt_cache_policy for more info.
     """
     cmd = "apt-cache policy %s" % package_name
-    rc, out, err = _ansible_module.run_command(cmd)
-    _fail_if_error(_ansible_module, cmd, rc, err)
+    return_code, out, err = _ansible_module.run_command(cmd)
+    _fail_if_error(_ansible_module, cmd, return_code, err)
     return parse_apt_cache_policy(out)
 
 
@@ -571,13 +580,13 @@ def dpkg_files(_ansible_module, package_name):
     """
 
     cmd = "dpkg-query -L %s" % package_name
-    rc, out, err = _ansible_module.run_command(cmd)
-    _fail_if_error(_ansible_module, cmd, rc, err)
+    return_code, out, err = _ansible_module.run_command(cmd)
+    _fail_if_error(_ansible_module, cmd, return_code, err)
 
     return out.strip().split('\n')
 
 
-def package_status(m, pkgname, version, state):
+def package_status(_ansible_module, pkgname, version, state):
     """Determine package's currently installed status
 
     Parameters:
@@ -591,7 +600,7 @@ def package_status(m, pkgname, version, state):
     package_is_upgradable (bool)
     has_files (bool)
     """
-    results ={
+    results = {
         'package_is_installed': False,
         'version_is_installed': False,
         'version_is_upgradable': False,
@@ -659,10 +668,10 @@ def package_status(m, pkgname, version, state):
         >     return (self.is_installed and
         >         self._pcache._depcache.is_upgradable(self._pkg))
 
-	However, extra complexity related to provided version and if package is
+        However, extra complexity related to provided version and if package is
         installed was added to the original source of this function. When
-	refactoring to remove the python_apt library dependencies, the extra
-	complexity regarding versions installed and a bool(avail_upgrades) was
+        refactoring to remove the python_apt library dependencies, the extra
+        complexity regarding versions installed and a bool(avail_upgrades) was
         left in this function to preserve original behavior.
 
         Over time, we should consider simplifying this
@@ -691,7 +700,7 @@ def package_status(m, pkgname, version, state):
 
         return bool(len(dpkg_files(_ansible_module, package_name)))
 
-    cache_info = apt_cache_policy_info(m, pkgname)
+    cache_info = apt_cache_policy_info(_ansible_module, pkgname)
     if is_pkg_installed(cache_info):
         results['package_is_installed'] = True
         results['version_is_installed'] = is_version_installed(version, cache_info)
@@ -700,10 +709,8 @@ def package_status(m, pkgname, version, state):
         results['version_is_installed'] = False
 
     results['package_is_upgradable'] = is_upgradable(version, cache_info)
-    results['has_files'] = has_package_files(m, pkgname)
+    results['has_files'] = has_package_files(_ansible_module, pkgname)
 
-    with open("/tmp/test_results.txt", 'a') as results_file:
-        results_file.write("|08-XX|%s|%s|%s|%s\n" % (results["package_is_installed"], results["version_is_installed"], results["package_is_upgradable"], results["has_files"]))
     return results['package_is_installed'],\
            results['version_is_installed'],\
            results['version_is_upgradable'],\
