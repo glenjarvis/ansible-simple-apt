@@ -577,7 +577,7 @@ def dpkg_files(_ansible_module, package_name):
     return out.strip().split('\n')
 
 
-def package_status(m, pkgname, version, cache, state):
+def package_status(m, pkgname, version, state):
     """Determine package's currently installed status
 
     Parameters:
@@ -826,7 +826,7 @@ def install(m, pkgspec, cache, upgrade=False, default_release=None,
 
         name, version = package_split(package)
         package_names.append(name)
-        installed, installed_version, upgradable, has_files = package_status(m, name, version, cache, state='install')
+        installed, installed_version, upgradable, has_files = package_status(m, name, version, state='install')
         if (not installed and not only_upgrade) or (installed and not installed_version) or (upgrade and upgradable):
             pkg_list.append("'%s'" % package)
         if installed_version and upgradable and version:
@@ -1007,7 +1007,7 @@ def remove(m, pkgspec, cache, purge=False, force=False,
     pkgspec = expand_pkgspec_from_fnmatches(m, pkgspec, cache)
     for package in pkgspec:
         name, version = package_split(package)
-        installed, installed_version, upgradable, has_files = package_status(m, name, version, cache, state='remove')
+        installed, installed_version, upgradable, has_files = package_status(m, name, version, state='remove')
         if installed_version or (has_files and purge):
             pkg_list.append("'%s'" % package)
     packages = ' '.join(pkg_list)
