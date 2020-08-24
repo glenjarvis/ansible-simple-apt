@@ -698,7 +698,10 @@ def package_status(_ansible_module, pkgname, version, state):
     def has_package_files(_ansible_module, package_name):
         """Given package_name, return True if package has files"""
 
-        return bool(len(dpkg_files(_ansible_module, package_name)))
+        # What happens when package isn't installed?
+        #return bool(len(dpkg_files(_ansible_module, package_name)))
+        # See: https://github.com/glenjarvis/ansible-simple-apt/issues/8
+        return True
 
     cache_info = apt_cache_policy_info(_ansible_module, pkgname)
     if is_pkg_installed(cache_info):
