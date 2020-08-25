@@ -1,0 +1,14 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "debian/jessie64"
+  
+  config.vm.provider "virtualbox" do |v|
+    v.name = "apt_python_demo_03"
+  end
+
+  config.vm.provision "shell" do |p|
+    p.inline = "/vagrant/setup.sh"
+  end
+end

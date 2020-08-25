@@ -1,0 +1,13 @@
+---
+- name: Demo Playbook
+  hosts: localhost
+  tasks:
+    - debug: msg="Ansible is working."
+
+- name: Demo Playbook
+  hosts: localhost
+  tasks:
+    - apt:
+        name: cowsay
+        state: present
+
