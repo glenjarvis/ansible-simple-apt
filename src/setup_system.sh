@@ -16,5 +16,4 @@ sudo pip install ansible  # Note this is often a lower version (like 1.7.2) vs
 
 cd /vagrant
 ansible --version
-
 ansible-playbook demo.yml

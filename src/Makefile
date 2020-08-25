@@ -23,8 +23,16 @@ rebuild: ## Rebuild Debian box for testing
 	vagrant destroy -f
 	vagrant up
 
-fetch: ## Fetch files from Debian box for faster development cycle
+fetch: ## Fetch files from Vagrant box for faster development cycle
 	# Requires vagrant scp module
+        # These failes are temporarily created on Vagrant box during
+        # testing and/or development
 	vagrant scp default:/vagrant/ansible.cfg .
 	vagrant scp default:/vagrant/modules/sapt.py modules/sapt.py
+	vagrant scp default:/vagrant/run_test.sh run_test.sh
+	vagrant scp default:/vagrant/RESULTS_add.txt RESULTS_add.txt
 
+test_run: rebuild
+	vagrant scp default:/tmp/test_results.txt tmp_results.txt
+	cat tmp_results.txt >> RESULTS.txt
+	rm tmp_results.txt
