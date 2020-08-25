@@ -1,0 +1,38 @@
+---
+- name: Demo Playbook
+  hosts: localhost
+  tasks:
+    - debug: msg="Ansible is working."
+
+    - name: Touch a file, using symbolic modes to set the permissions (equivalent to 0644)
+      file:
+        path: /tmp/foo.txt
+        state: touch
+        mode: u=rw,g=r,o=r
+
+    - name: Change file ownership, group and permissions
+      file:
+        path: /tmp/foo.txt
+        owner: vagrant
+        group: vagrant
+        mode: '0644'
+
+    - name: Fizz
+      fizz:
+        number: 3
+
+    - name: Buzz
+      fizz:
+        number: 5
+
+    - name: FizzBuzz
+      fizz:
+        number: 15
+
+    - name: Any number
+      fizz:
+        number: 14
+
+    - name: Using a random tool
+      script: /vagrant/my_random_tool.py
+
