@@ -5,7 +5,7 @@ Vagrant.configure("2") do |config|
   config.vm.box = "debian/jessie64"
 
   config.vm.provider "virtualbox" do |v|
-    v.name = "apt_python_venv"
+    v.name = "sapt"
   end
 
   # If developing, you may want to uncomment the following.
@@ -14,6 +14,6 @@ Vagrant.configure("2") do |config|
   # config.vm.synced_folder ".", "/home/vagrant/src"
 
   config.vm.provision "shell" do |p|
-    p.inline = "/vagrant/setup.sh"
+    p.inline = "/vagrant/setup_system.sh"
   end
 end
