@@ -584,7 +584,7 @@ def dpkg_files(_ansible_module, package_name):
     _fail_if_error(_ansible_module, cmd, return_code, err)
 
     if "does not contain any files" in out:
-      return []
+        return []
 
     return out.strip().split('\n')
 
