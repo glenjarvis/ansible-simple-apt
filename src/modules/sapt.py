@@ -583,6 +583,9 @@ def dpkg_files(_ansible_module, package_name):
     return_code, out, err = _ansible_module.run_command(cmd)
     _fail_if_error(_ansible_module, cmd, return_code, err)
 
+    if "does not contain any files" in out:
+      return []
+
     return out.strip().split('\n')
 
 
@@ -698,10 +701,11 @@ def package_status(_ansible_module, pkgname, version, state):
     def has_package_files(_ansible_module, package_name):
         """Given package_name, return True if package has files"""
 
-        # What happens when package isn't installed?
-        #return bool(len(dpkg_files(_ansible_module, package_name)))
-        # See: https://github.com/glenjarvis/ansible-simple-apt/issues/8
-        return True
+        # If a package is not installed, failure will be handled by
+        # _fail_if_error. Just like dpkg, requesting files for a not installed
+        # is an error. Otherwise correctly return if the package (still) has
+        # files.
+        return any(dpkg_files(_ansible_module, package_name))
 
     cache_info = apt_cache_policy_info(_ansible_module, pkgname)
     if is_pkg_installed(cache_info):
